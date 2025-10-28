@@ -15,5 +15,12 @@ spec:
           image: s09s12-app:latest # intentionally 'latest'
           ports: [{ containerPort: 8080 }]
           securityContext:
-            runAsUser: 0            # intentionally root
-          resources: {}             # no limits/requests
+            runAsNonRoot: true
+            readOnlyRootFilesystem: true
+          resources:
+            requests:
+              cpu: 50m
+              memory: 128Mi
+            limits:
+              cpu: 200m
+              memory: 256Mi
