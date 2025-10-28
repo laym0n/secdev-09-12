@@ -9,7 +9,7 @@
     <p>Health: <a href="/healthz">/healthz</a></p>
 
     <form method="get" action="/">
-      <label>Query "q": <input type="text" name="q" value="{{ q }}"/></label>
+      <label>Query "q": <input type="text" name="q" value="{{ q | e }}"/></label>
       <button type="submit">Go</button>
     </form>
 

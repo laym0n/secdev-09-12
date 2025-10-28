@@ -3,9 +3,41 @@ from html import escape
 from fastapi import FastAPI, Request
 from fastapi.responses import HTMLResponse, PlainTextResponse
 from fastapi.templating import Jinja2Templates
+from starlette.middleware.base import BaseHTTPMiddleware
 
 app = FastAPI()
 templates = Jinja2Templates(directory="app/templates")
+
+
+SECURITY_HEADERS = {
+    "Content-Security-Policy": "default-src 'self'; frame-ancestors 'none'; form-action 'self'; base-uri 'self'",
+    "X-Frame-Options": "DENY",
+    "X-Content-Type-Options": "nosniff",
+    "Permissions-Policy": "camera=(), microphone=(), geolocation=()",
+    "Cross-Origin-Resource-Policy": "same-origin",
+    "Cross-Origin-Embedder-Policy": "require-corp",
+    "Cross-Origin-Opener-Policy": "same-origin",
+    "Referrer-Policy": "no-referrer",
+}
+
+CACHE_CONTROL_HEADERS = {
+    "Cache-Control": "no-store",
+    "Pragma": "no-cache",
+    "Expires": "0",
+}
+
+
+class SecurityHeadersMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request: Request, call_next):
+        response = await call_next(request)
+        for header, value in SECURITY_HEADERS.items():
+            response.headers.setdefault(header, value)
+        for header, value in CACHE_CONTROL_HEADERS.items():
+            response.headers.setdefault(header, value)
+        return response
+
+
+app.add_middleware(SecurityHeadersMiddleware)
 
 
 @app.get("/", response_class=HTMLResponse)
