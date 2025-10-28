@@ -33,6 +33,71 @@ jobs:
           mv zap-work/zap_baseline.* EVIDENCE/S11/ || true
 
       - uses: actions/upload-artifact@v4
+        if: ${{ always() }}
         with:
           name: S11_EVIDENCE
           path: EVIDENCE/S11
+
+      - name: Enforce DAST quality gate
+        if: ${{ always() }}
+        run: |
+          set -euo pipefail
+
+          REPORT="EVIDENCE/S11/zap_baseline.json"
+
+          if [ ! -s "${REPORT}" ]; then
+            echo "::error::Missing ZAP report at ${REPORT}"
+            exit 1
+          fi
+
+          HIGH_OR_CRITICAL=$(jq -r '
+            [
+              .site[]? | .alerts[]? |
+              ((.riskcode // "0") | tonumber? ) as $code |
+              (.riskdesc // "" | ascii_downcase) as $desc |
+              select(
+                ($code != null and $code >= 3)
+                or ($desc | contains("high"))
+                or ($desc | contains("critical"))
+              )
+            ] | length
+          ' "${REPORT}")
+
+          CRITICAL_COUNT=$(jq -r '
+            [
+              .site[]? | .alerts[]? |
+              ((.riskcode // "0") | tonumber? ) as $code |
+              (.riskdesc // "" | ascii_downcase) as $desc |
+              select(
+                ($code != null and $code >= 4)
+                or ($desc | contains("critical"))
+              )
+            ] | length
+          ' "${REPORT}")
+
+          if [ "${HIGH_OR_CRITICAL}" = "null" ] || [ -z "${HIGH_OR_CRITICAL}" ]; then
+            HIGH_OR_CRITICAL=0
+          fi
+          if [ "${CRITICAL_COUNT}" = "null" ] || [ -z "${CRITICAL_COUNT}" ]; then
+            CRITICAL_COUNT=0
+          fi
+
+          HIGH_COUNT=$((HIGH_OR_CRITICAL - CRITICAL_COUNT))
+          if [ "${HIGH_COUNT}" -lt 0 ]; then
+            HIGH_COUNT=0
+          fi
+
+          echo "ZAP critical alerts: ${CRITICAL_COUNT}"
+          echo "ZAP high alerts: ${HIGH_COUNT}"
+
+          if [ "${CRITICAL_COUNT}" -gt 0 ]; then
+            echo "::error::DAST quality gate failed: expected 0 critical alerts, found ${CRITICAL_COUNT}"
+            exit 1
+          fi
+
+          if [ "${HIGH_COUNT}" -gt 0 ]; then
+            echo "::error::DAST quality gate failed: expected 0 high alerts, found ${HIGH_COUNT}"
+            exit 1
+          fi
+
+          echo "DAST quality gate passed (critical = 0, high = 0)."

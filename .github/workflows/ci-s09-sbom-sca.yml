@@ -22,7 +22,7 @@ jobs:
       - name: SCA Scan (Grype)
         run: |
           set -e
-          docker run --rm -v $PWD:/work -w /work anchore/grype:latest sbom:/work/EVIDENCE/S09/sbom.json -o json > EVIDENCE/S09/sca_report.json
+          docker run --rm -v $PWD:/work -w /work anchore/grype:latest sbom:/work/EVIDENCE/S09/sbom.json --fail-on critical -o json > EVIDENCE/S09/sca_report.json
           echo "# SCA summary" > EVIDENCE/S09/sca_summary.md
           jq -r '
             .matches
@@ -49,18 +49,38 @@ jobs:
           ' EVIDENCE/S09/sca_report.json >> EVIDENCE/S09/sca_summary.md || true
 
       - uses: actions/upload-artifact@v4
-        with:
-          name: S09_EVIDENCE
-          path: EVIDENCE/S09
-
-  s09-check-vulnerability:
-    needs: s09
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/download-artifact@v4.1.3
+        if: ${{ always() }}
         with:
           name: S09_EVIDENCE
           path: EVIDENCE/S09
 
       - name: Display SCA summary
-        run: cat EVIDENCE/S09/sca_summary.md
+        if: ${{ always() }}
+        run: cat EVIDENCE/S09/sca_summary.md || true
+
+      - name: Enforce SCA quality gate
+        if: ${{ always() }}
+        run: |
+          set -euo pipefail
+          if [ ! -s EVIDENCE/S09/sca_report.json ]; then
+            echo "::error::Missing SCA report at EVIDENCE/S09/sca_report.json"
+            exit 1
+          fi
+
+          CRITICAL_COUNT=$(jq -r '(.matches // []) | map(select((.vulnerability.severity // "") == "Critical")) | length' EVIDENCE/S09/sca_report.json)
+          HIGH_COUNT=$(jq -r '(.matches // []) | map(select((.vulnerability.severity // "") == "High")) | length' EVIDENCE/S09/sca_report.json)
+
+          echo "Critical vulnerabilities: ${CRITICAL_COUNT}"
+          echo "High vulnerabilities: ${HIGH_COUNT}"
+
+          if [ "${CRITICAL_COUNT}" -gt 0 ]; then
+            echo "::error::SCA quality gate failed: expected 0 critical vulnerabilities, found ${CRITICAL_COUNT}"
+            exit 1
+          fi
+
+          if [ "${HIGH_COUNT}" -gt 1 ]; then
+            echo "::error::SCA quality gate failed: expected at most 1 high vulnerability, found ${HIGH_COUNT}"
+            exit 1
+          fi
+
+          echo "SCA quality gate passed (critical = 0, high <= 1)."
