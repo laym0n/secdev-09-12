@@ -1,7 +1,15 @@
 rules:
   - id: py-unsafe-html-echo
     languages: [python]
-    severity: WARNING
+    severity: ERROR
     message: "Possible unsafe HTML echo in response."
-    pattern: |
-      HTMLResponse(f"...{ $X }...")
+    metadata:
+      cwe: "CWE-79: Improper Neutralization of Input During Web Page Generation ('Cross-site Scripting')"
+      owasp: "A03:2021-Injection"
+      category: security
+    patterns:
+      - pattern-either:
+          - pattern: HTMLResponse(f"...{ $X }...")
+          - pattern: HTMLResponse("...{}".format($X))
+      - pattern-not: HTMLResponse(f"...{ escape(...) }...")
+      - pattern-not: HTMLResponse("...{}".format(escape(...)))
