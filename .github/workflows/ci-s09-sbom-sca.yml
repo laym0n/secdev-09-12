@@ -24,9 +24,43 @@ jobs:
           set -e
           docker run --rm -v $PWD:/work -w /work anchore/grype:latest sbom:/work/EVIDENCE/S09/sbom.json -o json > EVIDENCE/S09/sca_report.json
           echo "# SCA summary" > EVIDENCE/S09/sca_summary.md
-          jq '[.matches[].vulnerability.severity] | group_by(.) | map({(.[0]): length}) | add' EVIDENCE/S09/sca_report.json >> EVIDENCE/S09/sca_summary.md || true
+          jq -r '
+            .matches
+            | map({
+                artifact_name: (.artifact.name // "N/A"),
+                artifact_version: (.artifact.version // "N/A"),
+                vulnerability_id: (.vulnerability.id // "N/A"),
+                description: (.vulnerability.description // "N/A"),
+                fix_versions: (
+                  (.vulnerability.fix.versions // [])
+                  | if length == 0 then ["N/A"] else . end
+                  | join(", ")
+                )
+              })
+            | unique
+            | map(
+                "Artifact: " + .artifact_name
+                + ", version: " + .artifact_version
+                + ". Vulnerability - " + .vulnerability_id
+                + ": " + .description
+                + ". Fixed: " + .fix_versions
+              )
+            | join("\n")
+          ' EVIDENCE/S09/sca_report.json >> EVIDENCE/S09/sca_summary.md || true
 
       - uses: actions/upload-artifact@v4
         with:
           name: S09_EVIDENCE
           path: EVIDENCE/S09
+
+  s09-check-vulnerability:
+    needs: s09
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: S09_EVIDENCE
+          path: EVIDENCE/S09
+
+      - name: Display SCA summary
+        run: cat EVIDENCE/S09/sca_summary.md
